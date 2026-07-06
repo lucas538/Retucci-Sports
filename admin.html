@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RT SPORTS - Painel Administrativo</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Estilização Premium de Tela Cheia para o Painel */
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        /* Centralizador da Tela de Login */
+        .login-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1.5rem;
+            box-sizing: border-box;
+        }
+
+        .login-box {
+            background-color: var(--cor-cinza);
+            border: 1px solid var(--cor-borda);
+            border-radius: var(--borda-raio);
+            padding: 3rem 2rem;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        .login-box h2 {
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            font-weight: 800;
+            font-size: 1.6rem;
+            color: var(--cor-secundaria);
+        }
+
+        .login-box .subtitle {
+            color: #666;
+            font-size: 0.85rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Estrutura do Painel */
+        .admin-layout {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2.5rem 1.5rem;
+        }
+
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--cor-borda);
+            padding-bottom: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .admin-logo-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .admin-logo-area img {
+            height: 45px;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+        }
+
+        .admin-logo-area h1 {
+            font-size: 1.4rem;
+            font-weight: 800;
+            margin: 0;
+            letter-spacing: -0.5px;
+        }
+
+        .btn-back-site {
+            background-color: var(--cor-cinza);
+            border: 1px solid var(--cor-borda);
+            color: var(--cor-secundaria);
+            padding: 0.7rem 1.4rem;
+            border-radius: var(--borda-raio);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: background-color var(--transicao), border-color var(--transicao);
+        }
+
+        .btn-back-site:hover {
+            background-color: var(--cor-borda);
+            border-color: #555;
+        }
+
+        /* Grid Principal de 2 Colunas */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.3fr;
+            gap: 2.5rem;
+            align-items: start;
+        }
+
+        @media (max-width: 992px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+        }
+
+        .dashboard-box {
+            background-color: var(--cor-cinza);
+            border: 1px solid var(--cor-borda);
+            border-radius: var(--borda-raio);
+            padding: 2.2rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .dashboard-box h2 {
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+            font-size: 1.25rem;
+            color: var(--cor-secundaria);
+            font-weight: 700;
+            border-bottom: 1px solid var(--cor-borda);
+            padding-bottom: 0.8rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .dashboard-box h2 span {
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: 400;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- TELA DE LOGIN (Visível por padrão se não autenticado) -->
+    <div class="login-wrapper" id="admin-login-screen">
+        <div class="login-box">
+            <h2>Acesso Restrito</h2>
+            <p class="subtitle">Faça login para gerenciar o estoque & finanças</p>
+            
+            <form id="login-form">
+                <div class="form-group" style="text-align: left;">
+                    <label for="username">Usuário</label>
+                    <input type="text" id="username" required placeholder="admin" style="background-color: #080808;">
+                </div>
+                <div class="form-group" style="text-align: left;">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" required placeholder="admin" style="background-color: #080808;">
+                </div>
+                <button type="submit" class="btn-primary w-full" style="margin-top: 1rem;">Entrar no Painel</button>
+                <p class="error-msg" id="login-error" style="margin-top: 1rem; min-height: 1.2rem; text-align: center; color: #ff3b30; font-size: 0.85rem;"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- TELA DO DASHBOARD COMPLETO (Oculto por padrão, ativado após login) -->
+    <div class="admin-layout hidden" id="admin-dashboard-screen">
+        
+        <!-- Top Bar -->
+        <header class="admin-header">
+            <div class="admin-logo-area">
+                <img src="assets/logo retucci sports.jpeg" alt="RT SPORTS">
+                <h1>Painel RT SPORTS</h1>
+            </div>
+            <a href="index.html" class="btn-back-site">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+                Voltar para o Site
+            </a>
+        </header>
+
+        <!-- Grade Financeira (Dashboard de Métricas) -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <span class="metric-title">Faturamento Bruto</span>
+                <span class="metric-val" id="metric-revenue">R$ 0,00</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-title">Custo de Produtos</span>
+                <span class="metric-val" id="metric-cost">R$ 0,00</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-title">Lucro Líquido</span>
+                <span class="metric-val positive" id="metric-profit">R$ 0,00</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-title">Vendas Registradas</span>
+                <span class="metric-val" id="metric-sales-count">0 un.</span>
+            </div>
+        </div>
+
+        <div class="admin-actions">
+            <button type="button" class="btn-delete" id="btn-reset-sales">Zerar Vendas</button>
+        </div>
+
+        <!-- Layout de Grade (Esquerda: Formulário | Direita: Itens do Estoque) -->
+        <main class="dashboard-grid">
+            
+            <!-- Coluna Esquerda: Formulário de Cadastro/Edição -->
+            <section class="dashboard-box">
+                <h2 id="form-action-title">Cadastrar Novo Produto</h2>
+                
+                <form id="add-product-form">
+                    <div class="form-group">
+                        <label for="prod-name">Título da Camiseta / Time</label>
+                        <input type="text" id="prod-name" required placeholder="Ex: Camiseta Flamengo - Retro 1981">
+                    </div>
+
+                    <div class="form-row-3">
+                        <div class="form-group">
+                            <label for="prod-cost">Preço de Custo (R$)</label>
+                            <input type="text" id="prod-cost" required placeholder="Ex: 80,00">
+                        </div>
+                        <div class="form-group">
+                            <label for="prod-price">Preço de Venda (R$)</label>
+                            <input type="text" id="prod-price" required placeholder="Ex: 199,90">
+                        </div>
+                    </div>
+                    <div class="form-row-3">
+                        <div class="form-group">
+                            <label for="prod-size">Tamanho</label>
+                            <select id="prod-size" required style="background-color: #000; color: #fff; border: 1px solid var(--cor-borda); border-radius: var(--borda-raio); padding: 0.75rem;">
+                                <option value="" disabled selected>Selecione</option>
+                                <option value="PP">PP</option>
+                                <option value="P">P</option>
+                                <option value="M">M</option>
+                                <option value="G">G</option>
+                                <option value="GG">GG</option>
+                            </select>
+                        </div>
+                    <div class="form-group">
+                        <label for="prod-status">Status</label>
+                        <select id="prod-status" required style="background-color: #000; color: #fff; border: 1px solid var(--cor-borda); border-radius: var(--borda-raio); padding: 0.75rem;">
+                            <option value="" disabled selected>Selecione</option>
+                            <option value="Disponível">Disponível</option>
+                            <option value="Encomenda">Encomenda</option>
+                        </select>
+                    </div>
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="prod-file">Foto da Camiseta</label>
+                            <div class="file-upload-wrapper">
+                                <input type="file" id="prod-file" accept="image/*" class="hidden">
+                                <div class="upload-area" id="upload-area">
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="17 8 12 3 7 8"></polyline>
+                                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                                    </svg>
+                                    <span>Selecionar foto</span>
+                                </div>
+                                <img id="upload-preview" class="hidden" alt="Preview da camiseta">
+                                <button type="button" class="btn-delete hidden" id="change-photo-badge">Trocar foto</button>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-primary w-full" id="btn-submit-product">Adicionar Camiseta</button>
+                        <button type="button" class="btn-delete w-full hidden" id="btn-cancel-edit" style="border: 1px solid var(--cor-borda); border-radius: var(--borda-raio); height: 45px; padding: 0;">Cancelar</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Coluna Direita: Listagem e Gerenciamento do Estoque -->
+            <section class="dashboard-box">
+                <h2>
+                    Estoque & Vendas
+                    <span id="stock-count-label">Carregando itens...</span>
+                </h2>
+
+                <div class="custom-products-list">
+                    <ul id="custom-items-list">
+                        <!-- Gerado via JavaScript -->
+                    </ul>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Scripts do Painel Administrativo -->
+    <script src="admin.js" defer></script>
+</body>
+</html>
