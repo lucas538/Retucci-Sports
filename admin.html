@@ -152,6 +152,149 @@
             color: #666;
             font-weight: 400;
         }
+
+        /* === Gráfico de Desempenho (Lucro Líquido / Vendas) === */
+        .chart-box h2 {
+            flex-wrap: wrap;
+            gap: 0.8rem;
+        }
+
+        .chart-toggle {
+            display: inline-flex;
+            gap: 4px;
+            background-color: #000;
+            border: 1px solid var(--cor-borda);
+            border-radius: 999px;
+            padding: 3px;
+        }
+
+        .chart-toggle-btn {
+            background: transparent;
+            border: none;
+            color: #888;
+            font-family: inherit;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.4rem 0.9rem;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        .chart-toggle-btn:hover {
+            color: #ccc;
+        }
+
+        .chart-toggle-btn.active {
+            background-color: var(--cor-borda);
+            color: #fff;
+        }
+
+        .performance-chart-wrapper {
+            position: relative;
+        }
+
+        .performance-chart {
+            width: 100%;
+            display: block;
+            overflow: visible;
+        }
+
+        .chart-bar-fill {
+            pointer-events: none;
+        }
+
+        .chart-bar-hit {
+            fill: transparent;
+            transition: fill 0.15s;
+            cursor: pointer;
+        }
+
+        .chart-bar-hit:hover,
+        .chart-bar-hit:focus {
+            fill: rgba(255, 255, 255, 0.05);
+            outline: none;
+        }
+
+        .chart-axis-label {
+            font-size: 9px;
+            fill: #666;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .chart-gridline {
+            stroke: #292929;
+            stroke-width: 1;
+        }
+
+        .chart-tooltip {
+            position: absolute;
+            pointer-events: none;
+            background-color: #000;
+            border: 1px solid var(--cor-borda);
+            border-radius: 6px;
+            padding: 0.5rem 0.7rem;
+            font-size: 0.78rem;
+            white-space: nowrap;
+            transform: translate(-50%, -110%);
+            opacity: 0;
+            transition: opacity 0.1s;
+            z-index: 5;
+        }
+
+        .chart-tooltip.visible {
+            opacity: 1;
+        }
+
+        .chart-tooltip .tt-date {
+            color: #888;
+            font-size: 0.7rem;
+            margin-bottom: 2px;
+        }
+
+        .chart-tooltip .tt-value {
+            font-weight: 700;
+            font-size: 0.85rem;
+        }
+
+        .btn-table-toggle {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-decoration: underline;
+            cursor: pointer;
+            padding: 0;
+            margin-top: 0.8rem;
+        }
+
+        .btn-table-toggle:hover {
+            color: #fff;
+        }
+
+        .performance-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.8rem;
+            font-size: 0.8rem;
+        }
+
+        .performance-table th,
+        .performance-table td {
+            text-align: left;
+            padding: 0.5rem 0.6rem;
+            border-bottom: 1px solid var(--cor-borda);
+        }
+
+        .performance-table th {
+            color: #888;
+            font-weight: 600;
+        }
+
+        .performance-table td {
+            font-variant-numeric: tabular-nums;
+        }
     </style>
 </head>
 <body>
@@ -298,6 +441,38 @@
                     <ul id="custom-items-list">
                         <!-- Gerado via JavaScript -->
                     </ul>
+                </div>
+            </section>
+
+            <!-- Gráfico de Desempenho -->
+            <section class="dashboard-box chart-box" style="grid-column: 1 / -1;">
+                <h2>
+                    Desempenho — Últimos 14 dias
+                    <span class="chart-toggle" id="chart-metric-toggle" role="group" aria-label="Selecionar métrica do gráfico">
+                        <button type="button" class="chart-toggle-btn active" data-metric="profit" aria-pressed="true">Lucro Líquido</button>
+                        <button type="button" class="chart-toggle-btn" data-metric="sales" aria-pressed="false">Vendas</button>
+                    </span>
+                </h2>
+
+                <div class="performance-chart-wrapper">
+                    <svg id="performance-chart" class="performance-chart" viewBox="0 0 720 220" preserveAspectRatio="none" role="img" aria-label="Gráfico de desempenho diário"></svg>
+                    <div class="chart-tooltip" id="chart-tooltip">
+                        <div class="tt-date" id="chart-tooltip-date"></div>
+                        <div class="tt-value" id="chart-tooltip-value"></div>
+                    </div>
+                </div>
+
+                <button type="button" class="btn-table-toggle" id="btn-toggle-table">Ver como tabela</button>
+                <div class="hidden" id="performance-table-wrapper">
+                    <table class="performance-table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th id="performance-table-metric-label">Lucro Líquido</th>
+                            </tr>
+                        </thead>
+                        <tbody id="performance-table-body"></tbody>
+                    </table>
                 </div>
             </section>
 

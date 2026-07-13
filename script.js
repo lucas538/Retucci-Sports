@@ -326,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const message = `Olá RT SPORTS! Gostaria de finalizar a compra dos seguintes itens:\n\n⚽ *ITENS DO PEDIDO:*\n${itemsText}\n💰 *VALOR TOTAL:* R$ ${formattedTotal}\n\nPor favor, confirme a disponibilidade e me envie o link para entrega e pagamento!`;
 
             const encodedMsg = encodeURIComponent(message);
-            const wppUrl = `https://wa.me/5517996041562?text=${encodedMsg}`;
+            const wppUrl = `https://wa.me/5517997765086?text=${encodedMsg}`;
 
             // Abre o whatsapp em nova aba
             window.open(wppUrl, '_blank');
@@ -466,7 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            const whatsappNumber = '5517996041562';
+            const whatsappNumber = '5517997765086';
             const whatsappText = encodeURIComponent(
                 `Olá, meu nome é ${name}.\n` +
                 `Email: ${email}.\n` +

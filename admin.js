@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 unsubscribeSales = salesRef.onSnapshot((snapshot) => {
                     sales = snapshot.docs.map((doc) => doc.data());
                     updateMetricsDashboard();
+                    renderPerformanceChart();
                 });
             }
         } else {
@@ -192,6 +193,190 @@ document.addEventListener('DOMContentLoaded', () => {
             metricProfit.textContent = `R$ ${totalProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
     };
+
+    // === Gráfico de Desempenho (Lucro Líquido / Vendas) — últimos 14 dias ===
+    const CHART_DAYS = 14;
+    const CHART_COLORS = { profitPos: '#aaff00', profitNeg: '#ef5350', sales: '#4dd0e1' };
+    let currentChartMetric = 'profit';
+
+    const chartMetricToggle = document.getElementById('chart-metric-toggle');
+    const performanceChartEl = document.getElementById('performance-chart');
+    const chartTooltip = document.getElementById('chart-tooltip');
+    const chartTooltipDate = document.getElementById('chart-tooltip-date');
+    const chartTooltipValue = document.getElementById('chart-tooltip-value');
+    const btnToggleTable = document.getElementById('btn-toggle-table');
+    const performanceTableWrapper = document.getElementById('performance-table-wrapper');
+    const performanceTableBody = document.getElementById('performance-table-body');
+    const performanceTableMetricLabel = document.getElementById('performance-table-metric-label');
+
+    const formatBRL = (val) => `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    // Monta os últimos CHART_DAYS dias (incluindo hoje) e soma lucro/qtd de vendas de cada um
+    const buildDailySeries = () => {
+        const days = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let i = CHART_DAYS - 1; i >= 0; i--) {
+            const date = new Date(today);
+            date.setDate(date.getDate() - i);
+            days.push({ date, profit: 0, count: 0 });
+        }
+
+        sales.forEach((sale) => {
+            const saleDate = new Date(sale.timestamp);
+            saleDate.setHours(0, 0, 0, 0);
+            const day = days.find((d) => d.date.getTime() === saleDate.getTime());
+            if (day) {
+                day.profit += (sale.salePrice - sale.costPrice);
+                day.count += 1;
+            }
+        });
+
+        return days;
+    };
+
+    // Gera o "d" de um <path> com cantos arredondados só na ponta oposta à linha de base
+    const roundedBarPath = (x, y, w, h, r, roundTop) => {
+        const radius = Math.max(0, Math.min(r, w / 2, h));
+        if (roundTop) {
+            return `M${x},${y + h} L${x},${y + radius} Q${x},${y} ${x + radius},${y} L${x + w - radius},${y} Q${x + w},${y} ${x + w},${y + radius} L${x + w},${y + h} Z`;
+        }
+        return `M${x},${y} L${x},${y + h - radius} Q${x},${y + h} ${x + radius},${y + h} L${x + w - radius},${y + h} Q${x + w},${y + h} ${x + w},${y + h - radius} L${x + w},${y} Z`;
+    };
+
+    const renderPerformanceChart = () => {
+        if (!performanceChartEl) return;
+
+        const days = buildDailySeries();
+        const isProfit = currentChartMetric === 'profit';
+        const values = days.map((d) => (isProfit ? d.profit : d.count));
+
+        const width = 720;
+        const height = 220;
+        const paddingLeft = 34;
+        const paddingRight = 6;
+        const paddingTop = 16;
+        const paddingBottom = 24;
+        const chartWidth = width - paddingLeft - paddingRight;
+        const chartHeight = height - paddingTop - paddingBottom;
+        const baselineY = paddingTop + chartHeight;
+
+        const maxAbs = Math.max(1, ...values.map((v) => Math.abs(v)));
+        const hasNegative = isProfit && values.some((v) => v < 0);
+        const zeroY = hasNegative ? paddingTop + chartHeight / 2 : baselineY;
+        const usableHeight = hasNegative ? chartHeight / 2 : chartHeight;
+
+        const slotWidth = chartWidth / days.length;
+        const barWidth = Math.min(24, slotWidth * 0.6);
+
+        let svg = '';
+
+        const gridYs = hasNegative
+            ? [paddingTop, zeroY, baselineY]
+            : [paddingTop, paddingTop + chartHeight / 2, baselineY];
+        gridYs.forEach((y) => {
+            svg += `<line class="chart-gridline" x1="${paddingLeft}" y1="${y}" x2="${width - paddingRight}" y2="${y}" />`;
+        });
+
+        days.forEach((day, i) => {
+            const value = values[i];
+            const rawHeight = Math.abs(value) * (usableHeight / maxAbs);
+            const barHeight = value !== 0 ? Math.max(rawHeight, 3) : 0;
+            const slotX = paddingLeft + slotWidth * i;
+            const barX = slotX + (slotWidth - barWidth) / 2;
+
+            let color = CHART_COLORS.sales;
+            if (isProfit) {
+                color = value >= 0 ? CHART_COLORS.profitPos : CHART_COLORS.profitNeg;
+            }
+
+            const dayLabel = String(day.date.getDate()).padStart(2, '0');
+            const fullLabel = day.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+            const valueLabel = isProfit ? formatBRL(value) : `${value} venda${value === 1 ? '' : 's'}`;
+
+            let barMarkup = '';
+            if (barHeight > 0) {
+                const roundTop = value >= 0;
+                const barY = value >= 0 ? zeroY - barHeight : zeroY;
+                const d = roundedBarPath(barX, barY, barWidth, barHeight, 4, roundTop);
+                barMarkup = `<path class="chart-bar-fill" d="${d}" fill="${color}"></path>`;
+            }
+
+            svg += `
+                <g>
+                    ${barMarkup}
+                    <rect class="chart-bar-hit" data-date="${fullLabel}" data-value="${valueLabel}"
+                        x="${slotX}" y="${paddingTop}" width="${slotWidth}" height="${chartHeight}"
+                        tabindex="0" role="img" aria-label="${fullLabel}: ${valueLabel}"></rect>
+                    <text class="chart-axis-label" x="${slotX + slotWidth / 2}" y="${height - 8}" text-anchor="middle">${dayLabel}</text>
+                </g>
+            `;
+        });
+
+        performanceChartEl.innerHTML = svg;
+
+        performanceChartEl.querySelectorAll('.chart-bar-hit').forEach((hitArea) => {
+            const showTooltip = () => {
+                const rectBox = hitArea.getBoundingClientRect();
+                const wrapperBox = performanceChartEl.parentElement.getBoundingClientRect();
+                chartTooltipDate.textContent = hitArea.getAttribute('data-date');
+                chartTooltipValue.textContent = hitArea.getAttribute('data-value');
+                chartTooltip.style.left = `${rectBox.left - wrapperBox.left + rectBox.width / 2}px`;
+                chartTooltip.style.top = `${rectBox.top - wrapperBox.top}px`;
+                chartTooltip.classList.add('visible');
+            };
+            const hideTooltip = () => chartTooltip.classList.remove('visible');
+
+            hitArea.addEventListener('pointerenter', showTooltip);
+            hitArea.addEventListener('pointermove', showTooltip);
+            hitArea.addEventListener('pointerleave', hideTooltip);
+            hitArea.addEventListener('focus', showTooltip);
+            hitArea.addEventListener('blur', hideTooltip);
+        });
+
+        if (performanceTableBody) {
+            performanceTableBody.innerHTML = '';
+            days.forEach((day, i) => {
+                const value = values[i];
+                const fullLabel = day.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const valueLabel = isProfit ? formatBRL(value) : `${value}`;
+                const tr = document.createElement('tr');
+                const tdDate = document.createElement('td');
+                tdDate.textContent = fullLabel;
+                const tdValue = document.createElement('td');
+                tdValue.textContent = valueLabel;
+                tr.appendChild(tdDate);
+                tr.appendChild(tdValue);
+                performanceTableBody.appendChild(tr);
+            });
+        }
+
+        if (performanceTableMetricLabel) {
+            performanceTableMetricLabel.textContent = isProfit ? 'Lucro Líquido' : 'Vendas';
+        }
+    };
+
+    if (chartMetricToggle) {
+        chartMetricToggle.addEventListener('click', (e) => {
+            const btn = e.target.closest('.chart-toggle-btn');
+            if (!btn) return;
+            currentChartMetric = btn.getAttribute('data-metric');
+            chartMetricToggle.querySelectorAll('.chart-toggle-btn').forEach((b) => {
+                const isActive = b === btn;
+                b.classList.toggle('active', isActive);
+                b.setAttribute('aria-pressed', String(isActive));
+            });
+            renderPerformanceChart();
+        });
+    }
+
+    if (btnToggleTable && performanceTableWrapper) {
+        btnToggleTable.addEventListener('click', () => {
+            const isHidden = performanceTableWrapper.classList.toggle('hidden');
+            btnToggleTable.textContent = isHidden ? 'Ver como tabela' : 'Ocultar tabela';
+        });
+    }
 
     // === Cadastro e Edição de Produtos ===
     const addProductForm = document.getElementById('add-product-form');
