@@ -68,6 +68,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // === Sistema de Banco de Dados de Produtos ===
+    // Usado só como imagem padrão de fallback (normalizeProducts) — não é mais
+    // usado para recriar produtos no Firestore, senão uma exclusão nunca "pegaria".
     const seedProducts = [
         { id: '1', name: 'Camiseta Clube Azul - Modelo Principal', price: '189,90', costPrice: '80,00', qty: 10, size: 'M', status: 'Disponível', img: 'https://images.unsplash.com/photo-1583332468351-4ad90b21dfc6?w=260&h=260&fit=crop&q=80' },
         { id: '2', name: 'Camiseta Time Estrela - Modelo Away', price: '189,90', costPrice: '80,00', qty: 10, size: 'P', status: 'Disponível', img: 'https://images.unsplash.com/photo-1558914611-c9172202bb91?w=260&h=260&fit=crop&q=80' },
@@ -96,22 +98,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Produtos ficam salvos no Firestore (coleção "products") e sincronizados
     // em tempo real entre todos os dispositivos/abas — ver firebase-config.js
     const productsRef = db.collection('products');
-    let products = normalizeProducts(seedProducts);
-
-    const seedProductsIfEmpty = async () => {
-        const snapshot = await productsRef.limit(1).get();
-        if (snapshot.empty) {
-            const batch = db.batch();
-            normalizeProducts(seedProducts).forEach((product) => batch.set(productsRef.doc(product.id), product));
-            await batch.commit();
-        }
-    };
-    seedProductsIfEmpty();
+    let products = [];
 
     productsRef.onSnapshot((snapshot) => {
-        if (!snapshot.empty) {
-            products = normalizeProducts(snapshot.docs.map((doc) => doc.data()));
-        }
+        products = normalizeProducts(snapshot.docs.map((doc) => doc.data()));
         renderAdminProductList();
         updateMetricsDashboard();
     });

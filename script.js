@@ -24,56 +24,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // === Sistema de Banco de Dados Unificado (Sincronizado via LocalStorage) ===
-    const seedProducts = [
-        { id: '1', name: 'Camiseta Clube Azul - Modelo Principal', price: '189,90', costPrice: '80,00', qty: 10, size: 'M', img: 'https://images.unsplash.com/photo-1583332468351-4ad90b21dfc6?w=260&h=260&fit=crop&q=80' },
-        { id: '2', name: 'Camiseta Time Estrela - Modelo Away', price: '189,90', costPrice: '80,00', qty: 10, size: 'P', img: 'https://images.unsplash.com/photo-1558914611-c9172202bb91?w=260&h=260&fit=crop&q=80' },
-        { id: '3', name: 'Camiseta Dragão FC - Edição Limitada', price: '219,90', costPrice: '90,00', qty: 10, size: 'G', img: 'https://images.unsplash.com/photo-1508344928928-7165b67de128?w=260&h=260&fit=crop&q=80' },
-        { id: '4', name: 'Camiseta Leão Clube - Retrô', price: '199,90', costPrice: '85,00', qty: 10, size: 'GG', img: 'https://images.unsplash.com/photo-1628100589886-444733db9b89?w=260&h=260&fit=crop&q=80' },
-        { id: '5', name: 'Camiseta Aço United - 2026', price: '179,90', costPrice: '75,00', qty: 10, size: 'PP', img: 'https://images.unsplash.com/photo-1622359405626-d15f7f32997e?w=260&h=260&fit=crop&q=80' },
-        { id: '6', name: 'Camiseta Fênix FC - Aquecimento', price: '149,90', costPrice: '60,00', qty: 10, size: 'M', img: 'https://images.unsplash.com/photo-1596706950274-122904c6a992?w=260&h=260&fit=crop&q=80' },
-        { id: '7', name: 'Camiseta Trovão City - Goleiro', price: '189,90', costPrice: '80,00', qty: 10, size: 'P', img: 'https://images.unsplash.com/photo-1586221151604-51a8eb8d5f30?w=260&h=260&fit=crop&q=80' },
-        { id: '8', name: 'Camiseta Atlético Real - Terceira', price: '199,90', costPrice: '85,00', qty: 10, size: 'G', img: 'https://images.unsplash.com/photo-1560272564-c83b66b1ad12?w=260&h=260&fit=crop&q=80' }
-    ];
-
     // Produtos ficam salvos no Firestore (coleção "products") e sincronizados
     // em tempo real entre todos os dispositivos/abas — ver firebase-config.js
     const productsRef = db.collection('products');
-    let products = seedProducts;
-
-    const seedProductsIfEmpty = async () => {
-        const snapshot = await productsRef.limit(1).get();
-        if (snapshot.empty) {
-            const batch = db.batch();
-            seedProducts.forEach((product) => batch.set(productsRef.doc(product.id), product));
-            await batch.commit();
-        }
-    };
-    seedProductsIfEmpty();
+    let products = [];
 
     productsRef.onSnapshot((snapshot) => {
-        if (!snapshot.empty) {
-            products = snapshot.docs.map((doc) => doc.data());
-        }
+        products = snapshot.docs.map((doc) => doc.data());
         renderStorefront();
         renderCartSidebar();
     });
 
-    const saveProduct = (product) => {
-        productsRef.doc(product.id).set(product).catch((err) => console.error('Erro ao salvar produto:', err));
-    };
-
-    // Vendas (histórico) também ficam no Firestore, na coleção "sales"
+    // Vendas (histórico) também ficam no Firestore, na coleção "sales".
+    // O estoque só é descontado e a venda só é registrada no checkout (ver
+    // o clique de "Enviar Pedido no WhatsApp" mais abaixo).
     const salesRef = db.collection('sales');
-    const registerSale = (product) => {
-        salesRef.add({
-            productId: product.id,
-            productName: product.name,
-            costPrice: parsePrice(product.costPrice || '80,00'),
-            salePrice: parsePrice(product.price),
-            timestamp: Date.now()
-        }).catch((err) => console.error('Erro ao registrar venda:', err));
-    };
 
     // === Utilitários de Parse Financeiro ===
     const parsePrice = (val) => {
@@ -128,6 +93,15 @@ document.addEventListener('DOMContentLoaded', () => {
             grouped[id] = (grouped[id] || 0) + 1;
         });
         return grouped;
+    };
+
+    // O carrinho é só uma "sacolinha" local — não desconta estoque nem registra
+    // venda ao adicionar/remover. Isso só acontece de fato no checkout (WhatsApp),
+    // então o estoque disponível pra adicionar é o que sobra descontando o que já
+    // está na sacolinha de cada visitante.
+    const getAvailableQty = (product) => {
+        const inCart = cart.filter(id => id === product.id).length;
+        return Math.max(0, (product.qty || 0) - inCart);
     };
 
     // Abrir/Fechar Carrinho
@@ -229,47 +203,33 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!product) return;
 
             if (btn.classList.contains('btn-qty-plus')) {
-                // Adiciona mais um item ao carrinho (se houver estoque)
-                if (product.qty > 0) {
-                    product.qty -= 1;
-                    saveProduct(product);
-
+                // Adiciona mais um item à sacolinha (se houver estoque disponível)
+                if (getAvailableQty(product) > 0) {
                     cart.push(productId);
                     saveCart();
 
-                    registerSale(product);
-
                     renderCartSidebar();
-                    renderStorefront();
+                    updateCardStockUI(productId);
                 } else {
                     alert('Limite de estoque atingido para este item!');
                 }
             } else if (btn.classList.contains('btn-qty-minus')) {
-                // Remove um item do carrinho e devolve para o estoque
+                // Remove um item da sacolinha
                 const index = cart.indexOf(productId);
                 if (index > -1) {
                     cart.splice(index, 1);
                     saveCart();
 
-                    product.qty += 1;
-                    saveProduct(product);
-
                     renderCartSidebar();
-                    renderStorefront();
+                    updateCardStockUI(productId);
                 }
             } else if (btn.classList.contains('btn-remove-item')) {
-                // Devolve todas as unidades deste item no carrinho de volta ao estoque
-                const grouped = getCartItemsGrouped();
-                const quantityInCart = grouped[productId] || 0;
-
+                // Remove todas as unidades deste item da sacolinha
                 cart = cart.filter(id => id !== productId);
                 saveCart();
 
-                product.qty += quantityInCart;
-                saveProduct(product);
-
                 renderCartSidebar();
-                renderStorefront();
+                updateCardStockUI(productId);
             }
         });
     }
@@ -280,22 +240,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (cart.length === 0) return;
 
             if (confirm('Deseja realmente limpar todo o carrinho?')) {
-                // Devolve as unidades para o estoque
-                const grouped = getCartItemsGrouped();
-                Object.keys(grouped).forEach(productId => {
-                    const product = products.find(p => p.id === productId);
-                    if (product) {
-                        product.qty += grouped[productId];
-                        saveProduct(product);
-                    }
-                });
-
                 cart = [];
                 saveCart();
 
                 renderCartSidebar();
                 renderStorefront();
-                
+
                 // Fecha o carrinho
                 cartSidebar.classList.remove('active');
                 cartOverlay.classList.remove('active');
@@ -305,22 +255,61 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Enviar Pedido no WhatsApp (Checkout)
     if (checkoutWppBtn) {
-        checkoutWppBtn.addEventListener('click', () => {
+        checkoutWppBtn.addEventListener('click', async () => {
             if (cart.length === 0) return;
 
             const grouped = getCartItemsGrouped();
+
+            // Confere se o estoque ainda cobre o pedido (pode ter mudado desde que
+            // os itens foram colocados na sacolinha) antes de confirmar a "venda".
+            const insufficient = Object.keys(grouped)
+                .map(productId => products.find(p => p.id === productId))
+                .filter(product => product && product.qty < grouped[product.id]);
+
+            if (insufficient.length > 0) {
+                const names = insufficient.map(p => `"${p.name}" (restam ${p.qty})`).join(', ');
+                alert(`Estoque insuficiente para: ${names}. Ajuste as quantidades no carrinho antes de continuar.`);
+                renderCartSidebar();
+                renderStorefront();
+                return;
+            }
+
+            checkoutWppBtn.disabled = true;
+
             let itemsText = '';
             let grandTotal = 0;
+            const batch = db.batch();
 
             Object.keys(grouped).forEach(productId => {
                 const product = products.find(p => p.id === productId);
-                if (product) {
-                    const qty = grouped[productId];
-                    const subtotal = parsePrice(product.price) * qty;
-                    grandTotal += subtotal;
-                    itemsText += `• *${qty}x ${product.name}* (R$ ${product.price}/un) - Subtotal: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`;
+                if (!product) return;
+
+                const qty = grouped[productId];
+                const subtotal = parsePrice(product.price) * qty;
+                grandTotal += subtotal;
+                itemsText += `• *${qty}x ${product.name}* (R$ ${product.price}/un) - Subtotal: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`;
+
+                // Só agora (checkout de verdade) o estoque desconta e a venda é registrada
+                batch.update(productsRef.doc(product.id), { qty: product.qty - qty });
+                for (let i = 0; i < qty; i++) {
+                    batch.set(salesRef.doc(), {
+                        productId: product.id,
+                        productName: product.name,
+                        costPrice: parsePrice(product.costPrice || '80,00'),
+                        salePrice: parsePrice(product.price),
+                        timestamp: Date.now()
+                    });
                 }
             });
+
+            try {
+                await batch.commit();
+            } catch (err) {
+                console.error('Erro ao finalizar pedido:', err);
+                alert('Não foi possível confirmar o pedido agora. Tente novamente em instantes.');
+                checkoutWppBtn.disabled = false;
+                return;
+            }
 
             const formattedTotal = grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const message = `Olá RT SPORTS! Gostaria de finalizar a compra dos seguintes itens:\n\n⚽ *ITENS DO PEDIDO:*\n${itemsText}\n💰 *VALOR TOTAL:* R$ ${formattedTotal}\n\nPor favor, confirme a disponibilidade e me envie o link para entrega e pagamento!`;
@@ -330,6 +319,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Abre o whatsapp em nova aba
             window.open(wppUrl, '_blank');
+
+            cart = [];
+            saveCart();
+            renderCartSidebar();
         });
     }
 
@@ -339,7 +332,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!btn) return;
 
         const product = products.find(p => p.id === productId);
-        const qty = product ? product.qty : 0;
+        const qty = product ? getAvailableQty(product) : 0;
 
         if (qty > 0) {
             btn.disabled = false;
@@ -411,7 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (product.qty <= 0) {
+        if (getAvailableQty(product) <= 0) {
             alert('Estoque esgotado!');
             pendingAddProductId = null;
             sizeOverlay?.classList.remove('active');
@@ -419,14 +412,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        product.qty -= 1;
-        saveProduct(product);
-        updateCardStockUI(product.id);
-
-        registerSale(product);
-
         cart.push(product.id);
         saveCart();
+        updateCardStockUI(product.id);
 
         pendingAddProductId = null;
         sizeOverlay?.classList.remove('active');
