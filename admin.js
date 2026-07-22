@@ -82,17 +82,26 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     const normalizeProducts = (items) => {
-        return items.map((product, index) => ({
-            ...product,
-            id: product.id || `product_${index + 1}`,
-            name: product.name || 'Produto sem nome',
-            price: product.price || '0,00',
-            costPrice: product.costPrice || '0,00',
-            qty: Number.isFinite(Number(product.qty)) ? Number(product.qty) : 0,
-            size: product.size || 'M',
-            status: product.status || 'DisponÃ­vel',
-            img: product.img || seedProducts[0].img
-        }));
+        return items.map((product, index) => {
+            // Produtos antigos só tinham um "img" único — vira a capa de um álbum de 1 foto.
+            const images = Array.isArray(product.images) && product.images.length > 0
+                ? product.images
+                : (product.img ? [product.img] : [seedProducts[0].img]);
+            return {
+                ...product,
+                id: product.id || `product_${index + 1}`,
+                name: product.name || 'Produto sem nome',
+                description: product.description || '',
+                category: product.category || 'Outros Times',
+                price: product.price || '0,00',
+                costPrice: product.costPrice || '0,00',
+                qty: Number.isFinite(Number(product.qty)) ? Number(product.qty) : 0,
+                size: product.size || 'M',
+                status: product.status || 'DisponÃ­vel',
+                images: images,
+                img: product.img || images[0]
+            };
+        });
     };
 
     // Produtos ficam salvos no Firestore (coleção "products") e sincronizados
@@ -371,6 +380,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // === Cadastro e Edição de Produtos ===
     const addProductForm = document.getElementById('add-product-form');
     const prodNameInput = document.getElementById('prod-name');
+    const prodDescriptionInput = document.getElementById('prod-description');
+    const prodCategoryInput = document.getElementById('prod-category');
     const prodCostInput = document.getElementById('prod-cost');
     const prodPriceInput = document.getElementById('prod-price');
     const prodSizeInput = document.getElementById('prod-size');
@@ -410,6 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span style="font-weight: 600; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; color: #fff;">${product.name}</span>
                         <span style="font-size: 0.75rem; color: #888;">Tamanho: ${product.size || 'M'}</span>
                         <span style="font-size: 0.75rem; color: #888;">Status: ${product.status || 'Disponível'}</span>
+                        <span style="font-size: 0.75rem; color: #888;">Categoria: ${product.category || 'Outros Times'}</span>
                     </div>
                 </div>
                 <div style="font-size: 0.78rem; color: #888; display: flex; gap: 8px; align-items: center;">
@@ -495,17 +507,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (product) {
                     editingProductId = productId;
                     prodNameInput.value = product.name;
+                    prodDescriptionInput.value = product.description || '';
+                    prodCategoryInput.value = product.category || '';
                     prodCostInput.value = product.costPrice || '80,00';
                     prodPriceInput.value = product.price;
                     prodSizeInput.value = product.size || '';
-                    loadedImageBase64 = product.img;
 
-                    if (uploadPreview) {
-                        uploadPreview.src = product.img;
-                        uploadPreview.classList.remove('hidden');
-                    }
-                    if (uploadArea) uploadArea.classList.add('hidden');
-                    if (changePhotoBadge) changePhotoBadge.classList.remove('hidden');
+                    resetPhotoSlots();
+                    const existingImages = Array.isArray(product.images) && product.images.length > 0
+                        ? product.images
+                        : (product.img ? [product.img] : []);
+                    existingImages.slice(0, PHOTO_SLOT_LABELS.length).forEach((base64, index) => setPhotoSlotImage(index, base64));
+
                     prodStatusInput.value = product.status || 'Disponível';
 
                     document.getElementById('form-action-title').textContent = 'Editar Camiseta';
@@ -529,13 +542,8 @@ document.addEventListener('DOMContentLoaded', () => {
         addProductForm.reset();
         prodSizeInput.value = '';
         prodStatusInput.value = '';
-        loadedImageBase64 = '';
-        if (uploadPreview) {
-            uploadPreview.src = '';
-            uploadPreview.classList.add('hidden');
-        }
-        if (uploadArea) uploadArea.classList.remove('hidden');
-        if (changePhotoBadge) changePhotoBadge.classList.add('hidden');
+        prodCategoryInput.value = '';
+        resetPhotoSlots();
 
         document.getElementById('form-action-title').textContent = 'Cadastrar Novo Produto';
         btnSubmitProduct.textContent = 'Adicionar Camiseta';
@@ -558,6 +566,8 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
 
             const name = prodNameInput.value.trim();
+            const description = prodDescriptionInput.value.trim();
+            const category = prodCategoryInput.value;
             const cost = prodCostInput.value.trim();
             const price = prodPriceInput.value.trim();
             const size = prodSizeInput.value;
@@ -573,34 +583,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            if (!category) {
+                alert('Por favor, selecione uma categoria antes de salvar.');
+                return;
+            }
+
+            const images = loadedImages.filter(Boolean);
+
             if (editingProductId) {
                 const product = products.find(p => p.id === editingProductId);
                 if (product) {
                     product.name = name;
+                    product.description = description;
+                    product.category = category;
                     product.price = price;
                     product.costPrice = cost;
                     product.size = size;
                     product.status = status;
-                    if (loadedImageBase64) {
-                        product.img = loadedImageBase64;
+                    if (images.length > 0) {
+                        product.images = images;
+                        product.img = images[0];
                     }
                     saveProduct(product);
                 }
             } else {
-                if (!loadedImageBase64 && uploadArea) {
-                    alert('Por favor, carregue uma foto do produto!');
+                if (images.length === 0) {
+                    alert('Por favor, carregue ao menos a foto da capa do produto!');
                     return;
                 }
 
                 const newProduct = {
                     id: 'custom_' + Date.now(),
                     name: name,
+                    description: description,
+                    category: category,
                     price: price,
                     costPrice: cost,
                     qty: 10,
                     size: prodSizeInput.value,
                     status: status,
-                    img: loadedImageBase64 || seedProducts[0].img
+                    images: images,
+                    img: images[0]
                 };
 
                 saveProduct(newProduct);
@@ -610,41 +633,160 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // === Upload de Imagem e Canvas Compression ===
-    const uploadArea = document.getElementById('upload-area');
-    const prodFileInput = document.getElementById('prod-file');
-    const uploadPreview = document.getElementById('upload-preview');
-    const changePhotoBadge = document.getElementById('change-photo-badge');
-    let loadedImageBase64 = '';
+    // === Upload de Múltiplas Fotos (Capa + até 5 secundárias) com Compressão ===
+    // Cada slot aceita seleção múltipla (distribui nos slots vazios) e pode ser
+    // arrastado sobre outro pra trocar de posição — útil pra promover uma foto
+    // secundária a capa sem precisar remover e subir tudo de novo.
+    const PHOTO_SLOT_LABELS = ['Foto da Capa', 'Foto Secundária', 'Foto Secundária', 'Foto Secundária', 'Foto Secundária', 'Foto Secundária'];
+    const photoSlotsGrid = document.getElementById('photo-slots-grid');
+    let loadedImages = PHOTO_SLOT_LABELS.map(() => '');
+    let dragSourceIndex = null;
 
-    if (uploadArea && prodFileInput) {
-        uploadArea.addEventListener('click', () => {
-            prodFileInput.click();
-        });
+    const clearPhotoSlot = (index) => {
+        loadedImages[index] = '';
+        const slot = photoSlotsGrid?.querySelector(`.photo-slot[data-index="${index}"]`);
+        if (!slot) return;
+        const area = slot.querySelector('.photo-slot-area');
+        const preview = slot.querySelector('.photo-slot-preview');
+        const removeBtn = slot.querySelector('.photo-slot-remove');
+        const input = slot.querySelector('.photo-slot-input');
+        const media = slot.querySelector('.photo-slot-media');
+        if (area) area.classList.remove('hidden');
+        if (preview) { preview.classList.add('hidden'); preview.src = ''; }
+        if (removeBtn) removeBtn.classList.add('hidden');
+        if (input) input.value = '';
+        if (media) media.removeAttribute('draggable');
+    };
 
-        prodFileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                compressImage(file, (base64Str) => {
-                    loadedImageBase64 = base64Str;
-                    uploadPreview.src = base64Str;
-                    uploadPreview.classList.remove('hidden');
-                    uploadArea.classList.add('hidden');
-                    if (changePhotoBadge) changePhotoBadge.classList.remove('hidden');
-                });
+    const setPhotoSlotImage = (index, base64) => {
+        loadedImages[index] = base64;
+        const slot = photoSlotsGrid?.querySelector(`.photo-slot[data-index="${index}"]`);
+        if (!slot) return;
+        const area = slot.querySelector('.photo-slot-area');
+        const preview = slot.querySelector('.photo-slot-preview');
+        const removeBtn = slot.querySelector('.photo-slot-remove');
+        const media = slot.querySelector('.photo-slot-media');
+        if (area) area.classList.add('hidden');
+        if (preview) { preview.src = base64; preview.classList.remove('hidden'); }
+        if (removeBtn) removeBtn.classList.remove('hidden');
+        if (media) media.setAttribute('draggable', 'true');
+    };
+
+    const refreshPhotoSlotVisual = (index) => {
+        if (loadedImages[index]) {
+            setPhotoSlotImage(index, loadedImages[index]);
+        } else {
+            clearPhotoSlot(index);
+        }
+    };
+
+    // Troca a foto de dois slots — é assim que o admin promove uma foto
+    // secundária a "Foto da Capa" (ou vice-versa), arrastando uma sobre a outra.
+    const swapPhotoSlots = (a, b) => {
+        if (a === b) return;
+        [loadedImages[a], loadedImages[b]] = [loadedImages[b], loadedImages[a]];
+        refreshPhotoSlotVisual(a);
+        refreshPhotoSlotVisual(b);
+    };
+
+    const resetPhotoSlots = () => {
+        PHOTO_SLOT_LABELS.forEach((_, index) => clearPhotoSlot(index));
+    };
+
+    if (photoSlotsGrid) {
+        photoSlotsGrid.innerHTML = PHOTO_SLOT_LABELS.map((label, index) => `
+            <div class="photo-slot" data-index="${index}">
+                <span class="photo-slot-label">${index === 0 ? label : ''}</span>
+                <div class="photo-slot-media">
+                    <input type="file" class="hidden photo-slot-input" data-index="${index}" accept="image/*" multiple>
+                    <div class="upload-area photo-slot-area" data-index="${index}">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        <span>Adicionar</span>
+                    </div>
+                    <img class="hidden photo-slot-preview" data-index="${index}" alt="${label}">
+                    <button type="button" class="hidden photo-slot-remove" data-index="${index}" aria-label="Remover ${label}">×</button>
+                </div>
+            </div>
+        `).join('');
+
+        photoSlotsGrid.addEventListener('click', (e) => {
+            const removeBtn = e.target.closest('.photo-slot-remove');
+            if (removeBtn) {
+                clearPhotoSlot(Number(removeBtn.getAttribute('data-index')));
+                return;
+            }
+            const trigger = e.target.closest('.photo-slot-area, .photo-slot-preview');
+            if (trigger) {
+                const index = trigger.getAttribute('data-index');
+                photoSlotsGrid.querySelector(`.photo-slot-input[data-index="${index}"]`)?.click();
             }
         });
-    }
 
-    if (uploadPreview) {
-        uploadPreview.addEventListener('click', () => {
-            prodFileInput.click();
+        // Seleção múltipla: pode escolher várias fotos de uma vez (ex: as 6 juntas)
+        // que são distribuídas nos slots vazios, começando pelo slot clicado.
+        photoSlotsGrid.addEventListener('change', (e) => {
+            if (!e.target.classList.contains('photo-slot-input')) return;
+            const files = Array.from(e.target.files || []);
+            if (files.length === 0) return;
+
+            const clickedIndex = Number(e.target.getAttribute('data-index'));
+            const targets = [clickedIndex];
+            for (let i = 0; i < PHOTO_SLOT_LABELS.length; i++) {
+                if (i !== clickedIndex && !loadedImages[i]) targets.push(i);
+            }
+
+            files.slice(0, targets.length).forEach((file, i) => {
+                compressImage(file, (base64Str) => setPhotoSlotImage(targets[i], base64Str));
+            });
+
+            if (files.length > targets.length) {
+                alert(`Só havia espaço para mais ${targets.length} foto(s). As demais não foram adicionadas — remova alguma foto e tente de novo.`);
+            }
         });
-    }
 
-    if (changePhotoBadge) {
-        changePhotoBadge.addEventListener('click', () => {
-            prodFileInput.click();
+        // Arrastar-e-soltar: arraste uma foto sobre outra pra trocarem de posição
+        // (ex: arrastar uma secundária pra cima da capa pra promovê-la a capa).
+        photoSlotsGrid.addEventListener('dragstart', (e) => {
+            const media = e.target.closest('.photo-slot-media[draggable="true"]');
+            if (!media) return;
+            const slot = media.closest('.photo-slot');
+            dragSourceIndex = Number(slot.getAttribute('data-index'));
+            slot.classList.add('dragging');
+            if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+        });
+
+        photoSlotsGrid.addEventListener('dragover', (e) => {
+            if (dragSourceIndex === null) return;
+            const slot = e.target.closest('.photo-slot');
+            if (!slot) return;
+            e.preventDefault();
+            slot.classList.add('drag-over');
+        });
+
+        photoSlotsGrid.addEventListener('dragleave', (e) => {
+            const slot = e.target.closest('.photo-slot');
+            if (slot) slot.classList.remove('drag-over');
+        });
+
+        photoSlotsGrid.addEventListener('drop', (e) => {
+            const slot = e.target.closest('.photo-slot');
+            if (!slot || dragSourceIndex === null) return;
+            e.preventDefault();
+            slot.classList.remove('drag-over');
+            const targetIndex = Number(slot.getAttribute('data-index'));
+            swapPhotoSlots(dragSourceIndex, targetIndex);
+            dragSourceIndex = null;
+        });
+
+        photoSlotsGrid.addEventListener('dragend', () => {
+            dragSourceIndex = null;
+            photoSlotsGrid.querySelectorAll('.photo-slot.drag-over, .photo-slot.dragging').forEach((el) => {
+                el.classList.remove('drag-over', 'dragging');
+            });
         });
     }
 

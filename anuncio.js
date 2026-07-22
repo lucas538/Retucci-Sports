@@ -7,13 +7,11 @@ document.addEventListener('DOMContentLoaded', () => {
         menuToggle.addEventListener('click', () => {
             menuToggle.classList.toggle('active');
             navMenu.classList.toggle('active');
-            
-            // Acessibilidade: atualiza aria-expanded
+
             const isExpanded = menuToggle.classList.contains('active');
             menuToggle.setAttribute('aria-expanded', isExpanded);
         });
 
-        // Fechar menu ao clicar em um link
         const navLinks = navMenu.querySelectorAll('a');
         navLinks.forEach(link => {
             link.addEventListener('click', () => {
@@ -24,20 +22,24 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // === Produto desta página (lido da URL: anuncio.html?id=xxx) ===
+    const productId = new URLSearchParams(window.location.search).get('id');
+
     // Produtos ficam salvos no Firestore (coleção "products") e sincronizados
-    // em tempo real entre todos os dispositivos/abas — ver firebase-config.js
+    // em tempo real — a coleção inteira é assinada (não só este produto) porque
+    // o carrinho lateral pode ter itens de outros anúncios também.
     const productsRef = db.collection('products');
     let products = [];
 
     productsRef.onSnapshot((snapshot) => {
         products = snapshot.docs.map((doc) => doc.data());
-        renderStorefront();
+        renderProductDetail();
         renderCartSidebar();
+        renderRelatedProducts();
     });
 
-    // Vendas (histórico) também ficam no Firestore, na coleção "sales".
-    // O estoque só é descontado e a venda só é registrada no checkout (ver
-    // o clique de "Enviar Pedido no WhatsApp" mais abaixo).
+    // Vendas (histórico) também ficam no Firestore. O estoque só é descontado e
+    // a venda só é registrada no checkout (ver "Enviar Pedido no WhatsApp" abaixo).
     const salesRef = db.collection('sales');
 
     // === Utilitários de Parse Financeiro ===
@@ -53,7 +55,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return parseFloat(clean) || 0;
     };
 
-    // === SISTEMA DE CARRINHO DE COMPRAS E SIDEBAR ===
+    const getProductImages = (product) => (Array.isArray(product.images) && product.images.length > 0)
+        ? product.images
+        : [product.img];
+
+    // === SISTEMA DE CARRINHO DE COMPRAS E SIDEBAR (compartilhado com a loja) ===
     const cartCountElement = document.getElementById('cart-count');
     const cartBtn = document.querySelector('.cart');
     const cartSidebar = document.getElementById('cart-sidebar');
@@ -80,7 +86,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateCartCount();
     };
 
-    // Agrupar itens do carrinho por ID para calcular quantidade
     const getCartItemsGrouped = () => {
         const grouped = {};
         cart.forEach(id => {
@@ -90,17 +95,14 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // O carrinho é só uma "sacolinha" local — não desconta estoque nem registra
-    // venda ao adicionar/remover. Isso só acontece de fato no checkout (WhatsApp),
-    // então o estoque disponível pra adicionar é o que sobra descontando o que já
-    // está na sacolinha de cada visitante. Itens "sob encomenda" são feitos por
-    // pedido, então não têm limite de estoque físico.
+    // venda ao adicionar/remover. Isso só acontece de fato no checkout (WhatsApp).
+    // Itens "sob encomenda" são feitos por pedido, então não têm limite de estoque físico.
     const getAvailableQty = (product) => {
         if (product.status === 'Encomenda') return Infinity;
         const inCart = cart.filter(id => id === product.id).length;
         return Math.max(0, (product.qty || 0) - inCart);
     };
 
-    // Abrir/Fechar Carrinho
     const closeSidebar = () => {
         cartSidebar?.classList.remove('active');
         aboutSidebar?.classList.remove('active');
@@ -136,7 +138,6 @@ document.addEventListener('DOMContentLoaded', () => {
         cartOverlay.addEventListener('click', closeSidebar);
     }
 
-    // Renderizar itens no carrinho lateral
     const renderCartSidebar = () => {
         if (!cartItemsContainer || !cartTotalPriceElement) return;
         cartItemsContainer.innerHTML = '';
@@ -153,11 +154,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const grouped = getCartItemsGrouped();
         let grandTotal = 0;
 
-        Object.keys(grouped).forEach(productId => {
-            const product = products.find(p => p.id === productId);
+        Object.keys(grouped).forEach(id => {
+            const product = products.find(p => p.id === id);
             if (!product) return;
 
-            const quantity = grouped[productId];
+            const quantity = grouped[id];
             const priceVal = parsePrice(product.price);
             const subtotal = priceVal * quantity;
             grandTotal += subtotal;
@@ -188,46 +189,38 @@ document.addEventListener('DOMContentLoaded', () => {
         cartTotalPriceElement.textContent = `R$ ${grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
 
-    // Controle de Cliques no Carrinho Lateral (Ajustar Qtd ou Remover)
     if (cartItemsContainer) {
         cartItemsContainer.addEventListener('click', (e) => {
             const btn = e.target.closest('button');
             if (!btn) return;
 
-            const productId = btn.getAttribute('data-id');
-            const product = products.find(p => p.id === productId);
+            const id = btn.getAttribute('data-id');
+            const product = products.find(p => p.id === id);
             if (!product) return;
 
             if (btn.classList.contains('btn-qty-plus')) {
-                // Adiciona mais um item à sacolinha (se houver estoque disponível)
                 if (getAvailableQty(product) > 0) {
-                    cart.push(productId);
+                    cart.push(id);
                     saveCart();
-
                     renderCartSidebar();
                 } else {
                     alert('Limite de estoque atingido para este item!');
                 }
             } else if (btn.classList.contains('btn-qty-minus')) {
-                // Remove um item da sacolinha
-                const index = cart.indexOf(productId);
+                const index = cart.indexOf(id);
                 if (index > -1) {
                     cart.splice(index, 1);
                     saveCart();
-
                     renderCartSidebar();
                 }
             } else if (btn.classList.contains('btn-remove-item')) {
-                // Remove todas as unidades deste item da sacolinha
-                cart = cart.filter(id => id !== productId);
+                cart = cart.filter(cid => cid !== id);
                 saveCart();
-
                 renderCartSidebar();
             }
         });
     }
 
-    // Esvaziar Carrinho
     if (clearCartBtn) {
         clearCartBtn.addEventListener('click', () => {
             if (cart.length === 0) return;
@@ -235,35 +228,29 @@ document.addEventListener('DOMContentLoaded', () => {
             if (confirm('Deseja realmente limpar todo o carrinho?')) {
                 cart = [];
                 saveCart();
-
                 renderCartSidebar();
-                renderStorefront();
-
-                // Fecha o carrinho
                 cartSidebar.classList.remove('active');
                 cartOverlay.classList.remove('active');
             }
         });
     }
 
-    // Enviar Pedido no WhatsApp (Checkout)
+    // Enviar Pedido no WhatsApp (Checkout) — só aqui o estoque desconta e a venda é registrada
     if (checkoutWppBtn) {
         checkoutWppBtn.addEventListener('click', async () => {
             if (cart.length === 0) return;
 
             const grouped = getCartItemsGrouped();
 
-            // Confere se o estoque ainda cobre o pedido (pode ter mudado desde que
-            // os itens foram colocados na sacolinha) antes de confirmar a "venda".
             const insufficient = Object.keys(grouped)
-                .map(productId => products.find(p => p.id === productId))
+                .map(id => products.find(p => p.id === id))
                 .filter(product => product && product.status !== 'Encomenda' && product.qty < grouped[product.id]);
 
             if (insufficient.length > 0) {
                 const names = insufficient.map(p => `"${p.name}" (restam ${p.qty})`).join(', ');
                 alert(`Estoque insuficiente para: ${names}. Ajuste as quantidades no carrinho antes de continuar.`);
                 renderCartSidebar();
-                renderStorefront();
+                renderProductDetail();
                 return;
             }
 
@@ -273,17 +260,16 @@ document.addEventListener('DOMContentLoaded', () => {
             let grandTotal = 0;
             const batch = db.batch();
 
-            Object.keys(grouped).forEach(productId => {
-                const product = products.find(p => p.id === productId);
+            Object.keys(grouped).forEach(id => {
+                const product = products.find(p => p.id === id);
                 if (!product) return;
 
-                const qty = grouped[productId];
+                const qty = grouped[id];
                 const subtotal = parsePrice(product.price) * qty;
                 grandTotal += subtotal;
                 itemsText += `• *${qty}x ${product.name}* (R$ ${product.price}/un) - Subtotal: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`;
 
-                // Só agora (checkout de verdade) o estoque desconta e a venda é registrada.
-                // Itens sob encomenda não têm estoque físico pra descontar.
+                // Itens sob encomenda não têm estoque físico pra descontar
                 if (product.status !== 'Encomenda') {
                     batch.update(productsRef.doc(product.id), { qty: product.qty - qty });
                 }
@@ -313,7 +299,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const encodedMsg = encodeURIComponent(message);
             const wppUrl = `https://wa.me/5517997765086?text=${encodedMsg}`;
 
-            // Abre o whatsapp em nova aba
             window.open(wppUrl, '_blank');
 
             cart = [];
@@ -322,211 +307,158 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // === Galeria de Fotos do Card (Capa + Secundárias) ===
-    const galleryIndex = {}; // productId -> índice da foto atual
-    const autoplayTimers = {}; // productId -> id do setInterval
-    const AUTOPLAY_INTERVAL_MS = 1100;
+    // === Página do Anúncio: todas as fotos já abertas em mosaico + descrição + tamanho ===
+    const adPageContent = document.getElementById('ad-page-content');
+    const adPageNotFound = document.getElementById('ad-page-not-found');
+    const adPageGallery = document.getElementById('ad-page-gallery');
+    const adPageName = document.getElementById('ad-page-name');
+    const adPagePrice = document.getElementById('ad-page-price');
+    const adPageStatus = document.getElementById('ad-page-status');
+    const adPageDescription = document.getElementById('ad-page-description');
+    const adPageSizeOptions = document.getElementById('ad-page-size-options');
+    const adPageQtyMinus = document.getElementById('ad-page-qty-minus');
+    const adPageQtyPlus = document.getElementById('ad-page-qty-plus');
+    const adPageQtyValue = document.getElementById('ad-page-qty-value');
+    const adPageAddBtn = document.getElementById('ad-page-add-btn');
+    const adPageFeedback = document.getElementById('ad-page-feedback');
 
-    const getProductImages = (product) => (Array.isArray(product.images) && product.images.length > 0)
-        ? product.images
-        : [product.img];
+    let selectedSize = '';
+    let selectedQty = 1;
 
-    const updateCardGallery = (productId) => {
-        const product = products.find(p => p.id === productId);
-        if (!product) return;
-        const images = getProductImages(product);
-        const index = galleryIndex[productId] || 0;
-        const nextSrc = images[index] || images[0];
-
-        const img = document.querySelector(`img[data-gallery-img="${productId}"]`);
-        if (img && img.getAttribute('src') !== nextSrc) {
-            img.style.opacity = '0';
-            setTimeout(() => {
-                img.src = nextSrc;
-                img.style.opacity = '1';
-            }, 150);
-        }
-
-        document.querySelectorAll(`.card-gallery-dot[data-id="${productId}"]`).forEach((dot) => {
-            dot.classList.toggle('active', Number(dot.getAttribute('data-index')) === index);
-        });
-    };
-
-    // Passar o mouse por cima do card faz o carrossel avançar sozinho, devagar;
-    // ao tirar o mouse, volta pra foto da capa.
-    const stopCardAutoplay = (productId) => {
-        if (autoplayTimers[productId]) {
-            clearInterval(autoplayTimers[productId]);
-            delete autoplayTimers[productId];
-        }
-    };
-
-    const startCardAutoplay = (product) => {
-        const images = getProductImages(product);
-        if (images.length <= 1) return;
-        stopCardAutoplay(product.id);
-
-        autoplayTimers[product.id] = setInterval(() => {
-            const current = galleryIndex[product.id] || 0;
-            galleryIndex[product.id] = (current + 1) % images.length;
-            updateCardGallery(product.id);
-        }, AUTOPLAY_INTERVAL_MS);
-    };
-
-    const stopCardAutoplayAndResetCover = (productId) => {
-        stopCardAutoplay(productId);
-        galleryIndex[productId] = 0;
-        updateCardGallery(productId);
-    };
-
-    // === Navegar na Galeria dos Cards da Vitrine ===
-    // "Ver Anúncio" agora é um link de verdade pra anuncio.html?id=..., sem JS aqui.
-    document.addEventListener('click', (e) => {
-        const galleryNavBtn = e.target.closest('.card-gallery-nav');
-        const galleryDot = e.target.closest('.card-gallery-dot');
-
-        if (galleryNavBtn) {
-            const productId = galleryNavBtn.getAttribute('data-id');
-            const product = products.find(p => p.id === productId);
-            if (!product) return;
-
-            const images = getProductImages(product);
-            const dir = Number(galleryNavBtn.getAttribute('data-dir'));
-            const current = galleryIndex[productId] || 0;
-            galleryIndex[productId] = (current + dir + images.length) % images.length;
-            updateCardGallery(productId);
-        } else if (galleryDot) {
-            const productId = galleryDot.getAttribute('data-id');
-            galleryIndex[productId] = Number(galleryDot.getAttribute('data-index'));
-            updateCardGallery(productId);
-        }
-    });
-
-    // === Barra de Categorias ===
-    const categoryBar = document.getElementById('category-bar');
-    let activeCategory = '';
-
-    if (categoryBar) {
-        categoryBar.addEventListener('click', (e) => {
-            const btn = e.target.closest('.category-btn');
+    if (adPageSizeOptions) {
+        adPageSizeOptions.addEventListener('click', (e) => {
+            const btn = e.target.closest('.size-option-btn');
             if (!btn) return;
 
-            activeCategory = btn.getAttribute('data-category');
-            categoryBar.querySelectorAll('.category-btn').forEach((b) => {
-                b.classList.toggle('active', b === btn);
+            selectedSize = btn.getAttribute('data-size');
+            adPageSizeOptions.querySelectorAll('.size-option-btn').forEach((b) => {
+                b.classList.toggle('selected', b === btn);
             });
-            renderStorefront();
         });
     }
 
-    // === Renderização Dinâmica da Vitrine ===
-    const produtosContainer = document.getElementById('produtos-container');
+    // Quantidade: limitada ao estoque disponível — mas itens "sob encomenda" são
+    // feitos por pedido, então getAvailableQty já retorna Infinity pra eles.
+    const getCurrentProduct = () => products.find(p => p.id === productId);
 
-    const renderStorefront = () => {
-        if (!produtosContainer) return;
+    const updateQtyStepper = () => {
+        if (!adPageQtyValue) return;
+        const product = getCurrentProduct();
+        const maxQty = product ? getAvailableQty(product) : 0;
 
-        // Evita autoplays "fantasma" de uma renderização anterior continuarem rodando
-        Object.keys(autoplayTimers).forEach(stopCardAutoplay);
+        selectedQty = Math.max(1, Math.min(selectedQty, maxQty || 1));
+        adPageQtyValue.textContent = selectedQty;
 
-        produtosContainer.innerHTML = '';
+        if (adPageQtyMinus) adPageQtyMinus.disabled = selectedQty <= 1;
+        if (adPageQtyPlus) adPageQtyPlus.disabled = selectedQty >= maxQty;
+    };
 
-        const visibleProducts = activeCategory
-            ? products.filter(product => product.category === activeCategory)
-            : products;
+    if (adPageQtyMinus) {
+        adPageQtyMinus.addEventListener('click', () => {
+            if (selectedQty > 1) {
+                selectedQty -= 1;
+                updateQtyStepper();
+            }
+        });
+    }
 
-        if (visibleProducts.length === 0) {
-            produtosContainer.innerHTML = '<p style="color: #666; text-align: center; grid-column: 1 / -1; padding: 2rem 0;">Nenhuma camiseta nessa categoria no momento.</p>';
+    if (adPageQtyPlus) {
+        adPageQtyPlus.addEventListener('click', () => {
+            const product = getCurrentProduct();
+            const maxQty = product ? getAvailableQty(product) : 0;
+            if (selectedQty < maxQty) {
+                selectedQty += 1;
+                updateQtyStepper();
+            }
+        });
+    }
+
+    const renderProductDetail = () => {
+        if (!adPageContent || !adPageNotFound) return;
+
+        const product = productId ? products.find(p => p.id === productId) : null;
+
+        if (!product) {
+            adPageContent.classList.add('hidden');
+            adPageNotFound.classList.remove('hidden');
             return;
         }
 
-        visibleProducts.forEach(product => {
-            const isPreOrder = product.status === 'Encomenda';
-            const statusText = isPreOrder ? 'Sob encomenda' : 'Disponivel';
-            const images = getProductImages(product);
-            const currentIndex = galleryIndex[product.id] || 0;
+        adPageContent.classList.remove('hidden');
+        adPageNotFound.classList.add('hidden');
 
-            const galleryControls = images.length > 1 ? `
-                <button type="button" class="card-gallery-nav prev" data-id="${product.id}" data-dir="-1" aria-label="Foto anterior">‹</button>
-                <button type="button" class="card-gallery-nav next" data-id="${product.id}" data-dir="1" aria-label="Próxima foto">›</button>
-                <div class="card-gallery-dots">
-                    ${images.map((_, i) => `<span class="card-gallery-dot ${i === currentIndex ? 'active' : ''}" data-id="${product.id}" data-index="${i}"></span>`).join('')}
-                </div>
-            ` : '';
+        const images = getProductImages(product);
+        adPageGallery.classList.toggle('single-photo', images.length === 1);
+        adPageGallery.innerHTML = images
+            .map((src, i) => `<img src="${src}" alt="${product.name} — foto ${i + 1}">`)
+            .join('');
 
-            const cardArticle = document.createElement('article');
-            cardArticle.className = 'card';
-            cardArticle.innerHTML = `
-                <div class="card-image">
-                    <img src="${images[currentIndex] || images[0]}" alt="${product.name}" data-gallery-img="${product.id}">
-                    ${galleryControls}
-                </div>
-                <div class="card-info">
-                    <h2 class="produto-nome">${product.name}</h2>
-                    <p class="produto-preco">R$ ${product.price}</p>
-                    <p class="produto-status ${isPreOrder ? 'pre-order' : 'available'}">${statusText}</p>
-                    <a class="btn-add" href="anuncio.html?id=${encodeURIComponent(product.id)}">Ver Anúncio</a>
-                </div>
-            `;
+        const isPreOrder = product.status === 'Encomenda';
+        adPageName.textContent = product.name;
+        adPagePrice.textContent = `R$ ${product.price}`;
+        adPageStatus.textContent = isPreOrder ? 'Sob encomenda' : 'Disponível';
+        adPageStatus.className = `ad-page-status ${isPreOrder ? 'pre-order' : 'available'}`;
+        adPageDescription.textContent = product.description || '';
 
-            if (images.length > 1) {
-                cardArticle.addEventListener('mouseenter', () => startCardAutoplay(product));
-                cardArticle.addEventListener('mouseleave', () => stopCardAutoplayAndResetCover(product.id));
-            }
+        document.title = `${product.name} — RT SPORTS`;
 
-            produtosContainer.appendChild(cardArticle);
-        });
+        updateQtyStepper();
     };
 
-    // === Formulário de Contato ===
-    const contactForm = document.getElementById('contact-form');
-    const contactStatus = document.getElementById('contact-status');
+    // === Outros Anúncios (todos os produtos, exceto o que está sendo visto) ===
+    const relatedProductsGrid = document.getElementById('related-products-grid');
 
-    if (contactForm && contactStatus) {
-        contactForm.addEventListener('submit', (e) => {
-            e.preventDefault();
+    const renderRelatedProducts = () => {
+        if (!relatedProductsGrid) return;
 
-            const name = document.getElementById('contact-name').value.trim();
-            const email = document.getElementById('contact-email').value.trim();
-            const subject = document.getElementById('contact-subject').value.trim();
-            const message = document.getElementById('contact-message').value.trim();
+        const others = products.filter(p => p.id !== productId);
 
-            if (!name || !email || !subject || !message) {
-                contactStatus.style.color = '#ff3b30';
-                contactStatus.textContent = 'Por favor, preencha todos os campos antes de enviar.';
+        if (others.length === 0) {
+            relatedProductsGrid.innerHTML = '<p style="color: #666; font-size: 0.85rem;">Nenhum outro anúncio no momento.</p>';
+            return;
+        }
+
+        relatedProductsGrid.innerHTML = others.map(product => {
+            const images = getProductImages(product);
+            return `
+                <a class="related-card" href="anuncio.html?id=${encodeURIComponent(product.id)}">
+                    <img src="${images[0]}" alt="${product.name}">
+                    <span class="related-card-name">${product.name}</span>
+                    <span class="related-card-price">R$ ${product.price}</span>
+                </a>
+            `;
+        }).join('');
+    };
+
+    if (adPageAddBtn) {
+        adPageAddBtn.addEventListener('click', () => {
+            const product = products.find(p => p.id === productId);
+            if (!product) return;
+
+            if (!selectedSize) {
+                adPageFeedback.style.color = '#ef5350';
+                adPageFeedback.textContent = 'Selecione um tamanho antes de adicionar.';
                 return;
             }
 
-            const whatsappNumber = '5517997765086';
-            const whatsappText = encodeURIComponent(
-                `Olá, meu nome é ${name}.\n` +
-                `Email: ${email}.\n` +
-                `Assunto: ${subject}.\n` +
-                `Mensagem: ${message}`
-            );
-            const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappText}`;
+            if (getAvailableQty(product) < selectedQty) {
+                adPageFeedback.style.color = '#ef5350';
+                adPageFeedback.textContent = 'Estoque insuficiente para essa quantidade.';
+                return;
+            }
 
-            contactStatus.style.color = 'var(--cor-secundaria)';
-            contactStatus.textContent = 'Abrindo WhatsApp com sua mensagem...';
+            for (let i = 0; i < selectedQty; i++) {
+                cart.push(product.id);
+            }
+            saveCart();
 
-            window.open(whatsappUrl, '_blank');
-            contactForm.reset();
+            selectedQty = 1;
+            updateQtyStepper();
 
-            setTimeout(() => {
-                contactStatus.textContent = '';
-            }, 6000);
+            adPageFeedback.style.color = '#aaff00';
+            adPageFeedback.textContent = 'Adicionado ao carrinho! Continue navegando ou abra o carrinho para finalizar.';
         });
     }
 
-    // === Inicialização da Vitrine ===
-    renderStorefront();
     updateCartCount();
-
-    // Sincroniza vitrine se voltar de outra aba onde alterou o estoque
-    window.addEventListener('focus', () => {
-        renderStorefront();
-        updateCartCount();
-        if (cartSidebar.classList.contains('active')) {
-            renderCartSidebar();
-        }
-    });
 });
